@@ -1,0 +1,2 @@
+/usr/bin/ar qc libConchCV.a CMakeFiles/ConchCV.dir/main.cpp.o
+/usr/bin/ranlib libConchCV.a

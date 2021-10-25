@@ -1,0 +1,30 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/charles/code/test1/HPS3DBase_IF.h
+stdint.h
+-
+WinSock2.h
+-
+
+/home/charles/code/test1/HPS3DUser_IF.h
+stdint.h
+-
+stdbool.h
+-
+HPS3DBase_IF.h
+/home/charles/code/test1/HPS3DBase_IF.h
+
+/home/charles/code/test1/main.cpp
+iostream
+-
+cstdio
+-
+HPS3DUser_IF.h
+/home/charles/code/test1/HPS3DUser_IF.h
+
