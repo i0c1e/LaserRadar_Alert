@@ -1,1 +1,0 @@
-/usr/bin/c++ -g CMakeFiles/test1.dir/main.cpp.o CMakeFiles/test1.dir/a.cpp.o -o test1   -L/home/charles/code/test1/.  -Wl,-rpath,/home/charles/code/test1/. -lHPS3DSDK 
