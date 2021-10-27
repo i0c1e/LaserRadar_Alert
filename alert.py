@@ -49,12 +49,19 @@ class Sensor:
         self.__matrix_size = self.__args.get_matrix_size()
         # self.__sensor_data = np.zeros([self.__matrix_size, self.__matrix_size])
         self.__device_ip = self.__conf.get("radar", "device_ip")
+        
+        # if self.__conf.has_option
+        if self.__conf.has_option("radar", "port"):
+            self.__port = self.__conf.getint("radar", "port")
+        else:
+            self.__port = 12345
+
         self.__threshold_data = self.__args.get_threshold()
         self.__target_shape = tuple(
             [self.__conf.getint("radar", "target_row"), self.__conf.getint("radar", "target_column")])
 
     def connect_device(self):
-        rt = self.__lib.myConnectDevice(c_char_p(bytes(self.__device_ip,encoding="utf-8")))
+        rt = self.__lib.myConnectDevice(c_char_p(bytes(self.__device_ip,encoding="utf-8")),c_int(self.__port))
         logging.info("Device IP: %s" % self.__device_ip)
         rt = True
         if not rt:
@@ -82,6 +89,8 @@ class Sensor:
         my_capture.restype = POINTER(c_int * 9600)
         try:
             num = 0
+            stepr = 5
+            stepc = 5
             while True:
                 num = num + 1
                 print("Call times: ", num)
@@ -90,30 +99,40 @@ class Sensor:
                 n = 0
                 r, c = 0, 0
                 conv_list = list()
+                
                 while r < 160:
                     while c < 60:
-                        # print("Line: %-3d, data[%3d:%-3d, %3d:%-3d], Sum: %-9d" %(n, r, r+10, c, c+10, matrix[r:r+10, c:c+10].sum()) )
+                        # print("Line: %-3d, data[%3d:%-3d, %3d:%-3d], Sum: %-9d" %(n, r, r+stepr, c, c+stepc, matrix[r:r+stepr, c:c+stepc].sum()) )
                         conv_list.append(origin_matrix[r:r + 10, c:c + 10].sum() / 100 / 1000)  # 1000mm
-                        c = c + 10
+                        c = c + stepc
                         n = n + 1
                     c = 0
-                    r = r + 10
+                    r = r + stepr
                 # print(matrix)
-                conv_matrix = np.array(conv_list).reshape(16, 6)
+                # conv_matrix = np.array(conv_list).reshape(16, 6)
+                # conv_matrix = np.array(conv_list).reshape(40, 15)
+                conv_matrix = np.array(conv_list).reshape(160//stepr, 60//stepc)
                 # print(conv_matrix)
 
                 # determine if block
-                threshold_matrix = self.read_threshold_data()
+                # threshold_matrix = self.read_threshold_data()
+                threshold_matrix = np.ones(160//stepr * 60//stepc).reshape(160//stepr,60//stepc)
+
                 logging.debug("Conv_Matrix:\n%s" % (conv_matrix))
+                bool_matrix = conv_matrix-threshold_matrix > 0
+                self.print_matrix(bool_matrix)
+                
+                # logging.debug("Judge_Matrix:\n%s" % (conv_matrix-threshold_matrix < 0))
                 alert_matrix = conv_matrix[conv_matrix-threshold_matrix < 0]
                 logging.info("Alert_Point:%d" % alert_matrix.size)
-                logging.info("Alert_Matrix:\n%s" % alert_matrix)
+                # logging.info("Alert_Matrix:\n%s" % alert_matrix)
 
                 if is_export_origin_matrix is True:
                     self.export_csv(origin_matrix / 1000, "OriginMatrix")
                 if is_export_conv_matrix is True:
                     self.export_csv(conv_matrix, "ConvMatrix")
-                time.sleep(capture_time)
+                # time.sleep(capture_time)
+                # time.sleep(1)
         except KeyboardInterrupt:
             print("\nKeyboardInterrupt Program closing...")
             logging.info("KeyboardInterrupt Program closing...")
@@ -126,6 +145,21 @@ class Sensor:
         #     # disconnect device
         #     self.__lib.myDisConnectDevice()
 
+    def print_matrix(self, matrix):
+        # # 从左到右打印
+        # matrix = np.transpose(matrix,[1,0])
+        # matrix = matrix.reshape(60,160)
+        for row in matrix:
+            for j in row:
+                if j == False:
+                    # print("\033[1;41m%-7s\033[0m" % j,end="")
+                    print("\033[1;41m  \033[0m" % j,end="")
+                else:
+                    # print("%-7s" % j,end="")
+                    print("  ",end="")
+            print("")
+        # print("\033[1;41m%s\033[0m" % (conv_matrix-threshold_matrix < 0))
+    
     # 获取传感器数据信息
     def get_sensor_data(self):
         return self.__sensor_data
@@ -162,17 +196,19 @@ class Sensor:
 
 
 if __name__ == '__main__':
-    # load library
-    # lib = CDLL("./libConchCV.so")
 
-    # connect device
-    # lib.myConnectDevice()
-    # get function from library
+    # 日志服务
+    # Release
+    # logging.basicConfig(level=logging.DEBUG, filename="radar.log", filemode="a",
+    #                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+    # logging.basicConfig(level=logging.ERROR, filename="error.log", filemode="a",
+    #                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
-    logging.basicConfig(level=logging.DEBUG, filename="radar.log", filemode="a",
+    # Debug
+    logging.basicConfig(level=logging.DEBUG, filemode="a",
                         format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
-    logging.basicConfig(level=logging.ERROR, filename="error.log", filemode="a",
-                        format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+
+
     # 1. 读取配置信息
     # model_args = ModelArgs()
     sensor = Sensor()

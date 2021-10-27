@@ -27,5 +27,14 @@ con = lib.myConnectDevice
 # con.argtype = ip
 # con(conf.get("radar","device_ip"))
 # con(ip(c_char(b"192.168.123.10")))
-con(c_char_p(b"192.168.123.10"))
+con(c_char_p(b"192.168.123.10"),c_int(12345))
 lib.myDisConnectDevice()
+def print_matrix(matrix):
+    for row in matrix:
+        for j in row:
+            print("\033[1;41m%s\033[0m " % j,end="")
+        print("")
+    # print("\033[1;41m%s\033[0m" % (conv_matrix-threshold_matrix < 0))
+
+a = np.arange(10).reshape(5,2)
+print_matrix(a)
