@@ -7,15 +7,33 @@
 
 static HPS3D_MeasureData_t g_measureData;
 static int matrix[9600];
+static int min_margin = 0;
+static int average_margin = 0;
+static int max = 0;
+static int min = 999999;
 
 static bool PrintResultData(HPS3D_EventType_t type, HPS3D_MeasureData_t data)
 {
     //    int num = 9600;
 
-    printf("*************  HPS3D_FULL_DEPTH_EVEN    ********************\n");
-    printf("distance_average:%d\n", data.full_depth_data.distance_average);
-    printf("distance_min    :%d\n", data.full_depth_data.distance_min);
-    printf("saturation_count:%d\n", data.full_depth_data.saturation_count);
+//    printf("*************  HPS3D_FULL_DEPTH_EVEN    ********************\n");
+//    printf("distance_average:%d\n", data.full_depth_data.distance_average);
+//    if (data.full_depth_data.distance_average > max) {
+//        max = data.full_depth_data.distance_average;
+//    }
+//    if (data.full_depth_data.distance_average < min) {
+//        min = data.full_depth_data.distance_average;
+//    }
+//    printf("    margin:%d\n", max-min);
+    printf("distance_min    :%d", data.full_depth_data.distance_min);
+    if (data.full_depth_data.distance_min > max) {
+         max = data.full_depth_data.distance_min;
+    }
+    if (data.full_depth_data.distance_min < min) {
+        min = data.full_depth_data.distance_min;
+    }
+    printf("    margin:%d\n", max-min);
+//    printf("saturation_count:%d\n", data.full_depth_data.saturation_count);
 
     //    FILE *distance = NULL;
     //    distance = fopen("/mnt/d/TechDev/test.txt", "w+");
@@ -173,7 +191,7 @@ static int *capture()
 int main()
 {
     int count = 0;
-    int times = 1;
+    int times = 1000;
     char ip_addr[] = "192.168.123.10";
     std::cout << ip_addr << std::endl;
     HPS3D_StatusTypeDef ret = connectDevice(ip_addr, 12345);

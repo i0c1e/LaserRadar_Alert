@@ -1,14 +1,12 @@
 # -*- coding:utf-8 -*-
 from ctypes import *
 import numpy as np
-import cv2
 from datetime import datetime
 import time, datetime
 import json
 import logging
 import sqlite3
 import configparser
-import matplotlib.pyplot as plt
 import os
 
 
@@ -46,12 +44,12 @@ class Sensor:
         so_file = os.path.join(self.__curdir, so_name)
 
         self.__lib = CDLL(so_file)
-        
+
         self.__args = ModelArgs()
         self.__matrix_size = self.__args.get_matrix_size()
         # self.__sensor_data = np.zeros([self.__matrix_size, self.__matrix_size])
         self.__device_ip = self.__conf.get("radar", "device_ip")
-        
+
         # if self.__conf.has_option
         if self.__conf.has_option("radar", "port"):
             self.__port = self.__conf.getint("radar", "port")
@@ -91,36 +89,28 @@ class Sensor:
         my_capture.restype = POINTER(c_int * 9600)
         try:
             num = 0
-            stepr = 5
-            stepc = 5
+            stepr = 1
+            stepc = 1
             while True:
                 num = num + 1
                 print("Call times: ", num)
                 ret = my_capture()
-                # origin_matrix = np.array(list(ret.contents)).reshape(160, 60)
-                origin_matrix = np.array(list(ret.contents),dtype=np.float32).reshape(60, 160)/100
-
-                # plt.imshow(origin_matrix * 0.0038, cmap='gray')
-                new_img = cv2.normalize(origin_matrix, origin_matrix, 0, 255, cv2.NORM_MINMAX)
-                new_img = cv2.convertScaleAbs(new_img)
-                plt.imshow(new_img, cmap='gray_r')
-                plt.show()
+                origin_matrix = np.array(list(ret.contents)).reshape(60, 160)
                 n = 0
                 r, c = 0, 0
                 conv_list = list()
-                
-                while r < 60:
-                    while c < 160:
+
+                while c < 160:
+                    while r < 60:
                         # print("Line: %-3d, data[%3d:%-3d, %3d:%-3d], Sum: %-9d" %(n, r, r+stepr, c, c+stepc, matrix[r:r+stepr, c:c+stepc].sum()) )
                         conv_list.append(origin_matrix[r:r + stepr, c:c + stepc].sum() / (stepr*stepc) / 1000)  # 1000mm
-                        c = c + stepc
+                        r = r + stepr
                         n = n + 1
-                    c = 0
-                    r = r + stepr
+                    r = 0
+                    c = c + stepc
                 # print(matrix)
-                # conv_matrix = np.array(conv_list).reshape(16, 6)
-                # conv_matrix = np.array(conv_list).reshape(40, 15)
-                conv_matrix = np.array(conv_list).reshape(60//stepr, 160//stepc)
+                # conv_matrix = np.array(conv_list).reshape(160//stepr, 60//stepc)
+                conv_matrix = np.array(conv_list).reshape( 60//stepc, 160//stepr)
                 # print(conv_matrix)
 
                 # determine if block
@@ -130,7 +120,7 @@ class Sensor:
                 logging.debug("Conv_Matrix: %s\n%s" % (conv_matrix.shape,conv_matrix))
                 bool_matrix = conv_matrix-threshold_matrix > 0
                 self.print_matrix(bool_matrix)
-                
+
                 # logging.debug("Judge_Matrix:\n%s" % (conv_matrix-threshold_matrix < 0))
                 alert_matrix = conv_matrix[conv_matrix-threshold_matrix < 0]
                 logging.info("Alert_Point:%d" % alert_matrix.size)
@@ -140,7 +130,7 @@ class Sensor:
                     self.export_csv(origin_matrix / 1000, "OriginMatrix")
                 if is_export_conv_matrix is True:
                     self.export_csv(conv_matrix, "ConvMatrix")
-                time.sleep(capture_time)
+                # time.sleep(capture_time)
                 # time.sleep(1)
         except KeyboardInterrupt:
             print("\nKeyboardInterrupt Program closing...")
@@ -168,7 +158,7 @@ class Sensor:
                     print("  ",end="")
             print("")
         # print("\033[1;41m%s\033[0m" % (conv_matrix-threshold_matrix < 0))
-    
+
     # 获取传感器数据信息
     def get_sensor_data(self):
         return self.__sensor_data
@@ -181,7 +171,7 @@ class Sensor:
         threshold_matrix = np.loadtxt(open("threshold.csv"), delimiter=",", skiprows=0)
         if threshold_matrix.shape != self.__target_shape:
             logging.error("Threshold Matrix Shape Doesn't Match! Target Shape: %s , Read Shape: %s" % (
-            str(self.__target_shape), str(threshold_matrix.shape)))
+                str(self.__target_shape), str(threshold_matrix.shape)))
             raise Exception()
         logging.info("Threshold Matrix Shape Import Successfully, Size: %s" % str(threshold_matrix.shape))
         return threshold_matrix
