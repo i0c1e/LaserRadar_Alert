@@ -78,6 +78,9 @@ class Sensor:
         np.savetxt(export_file, matrix, delimiter=",")
         logging.info("Export CSV File: %s", export_file)
 
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+
     def single_capture(self, capture_time: int = 3):
         if self.__conf.has_option("radar", "capture_time"):
             capture_time = self.__conf.getint("radar", "capture_time")
@@ -98,13 +101,29 @@ class Sensor:
                 print("Call times: ", num)
                 ret = my_capture()
                 # origin_matrix = np.array(list(ret.contents)).reshape(160, 60)
-                origin_matrix = np.array(list(ret.contents),dtype=np.float32).reshape(60, 160)/100
+                origin_matrix = np.array(list(ret.contents),dtype=np.float32).reshape(60, 160)
 
-                # plt.imshow(origin_matrix * 0.0038, cmap='gray')
+                tmp1_origin_matrix = np.r_[origin_matrix/1100,origin_matrix/1200,origin_matrix/1300]
+                tmp2_origin_matrix = np.r_[origin_matrix/1400,origin_matrix/1500,origin_matrix/1600]
+                tmp3_origin_matrix = np.r_[origin_matrix/1700,origin_matrix/1800,origin_matrix/1900]
+                origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix,tmp3_origin_matrix]
+                # origin_matrix = origin_matrix/2500
+
+                # sigmoid
+                origin_matrix = 1/(1+np.exp(-origin_matrix))
+                # tanh
+#                origin_matrix = (np.exp(origin_matrix)-np.exp(-origin_matrix))/(np.exp(origin_matrix)+np.exp(-origin_matrix))
+                # plt.imshow(origin_matrix * 0.0038, cmap='gray_r')
                 new_img = cv2.normalize(origin_matrix, origin_matrix, 0, 255, cv2.NORM_MINMAX)
                 new_img = cv2.convertScaleAbs(new_img)
-                plt.imshow(new_img, cmap='gray_r')
-                plt.show()
+                # gray = cv2.cvtColor(new_img,cv2.COLOR_BGR2GRAY)
+                cv2.namedWindow('cam', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+                cv2.imshow("cam", new_img)
+                cv2.waitKey(1)
+                if cv2.waitKey(1) and 0xFF == ord('q'):
+                    break
+                # plt.imshow(new_img, cmap='gray')
+                # plt.show()
                 n = 0
                 r, c = 0, 0
                 conv_list = list()
@@ -129,7 +148,7 @@ class Sensor:
 
                 logging.debug("Conv_Matrix: %s\n%s" % (conv_matrix.shape,conv_matrix))
                 bool_matrix = conv_matrix-threshold_matrix > 0
-                self.print_matrix(bool_matrix)
+                # self.print_matrix(bool_matrix)
                 
                 # logging.debug("Judge_Matrix:\n%s" % (conv_matrix-threshold_matrix < 0))
                 alert_matrix = conv_matrix[conv_matrix-threshold_matrix < 0]
@@ -140,7 +159,7 @@ class Sensor:
                     self.export_csv(origin_matrix / 1000, "OriginMatrix")
                 if is_export_conv_matrix is True:
                     self.export_csv(conv_matrix, "ConvMatrix")
-                time.sleep(capture_time)
+                # time.sleep(capture_time)
                 # time.sleep(1)
         except KeyboardInterrupt:
             print("\nKeyboardInterrupt Program closing...")
