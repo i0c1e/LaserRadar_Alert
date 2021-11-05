@@ -6,7 +6,7 @@
 #include "HPS3DUser_IF.h"
 
 static HPS3D_MeasureData_t g_measureData;
-static int matrix[9600];
+static float matrix[9600];
 static int min_margin = 0;
 static int average_margin = 0;
 static int max = 0;
@@ -17,7 +17,7 @@ static bool PrintResultData(HPS3D_EventType_t type, HPS3D_MeasureData_t data)
     //    int num = 9600;
 
 //    printf("*************  HPS3D_FULL_DEPTH_EVEN    ********************\n");
-//    printf("distance_average:%d\n", data.full_depth_data.distance_average);
+   printf("distance_average:%d\n", data.full_depth_data.distance_average);
 //    if (data.full_depth_data.distance_average > max) {
 //        max = data.full_depth_data.distance_average;
 //    }
@@ -25,15 +25,15 @@ static bool PrintResultData(HPS3D_EventType_t type, HPS3D_MeasureData_t data)
 //        min = data.full_depth_data.distance_average;
 //    }
 //    printf("    margin:%d\n", max-min);
-    printf("distance_min    :%d", data.full_depth_data.distance_min);
-    if (data.full_depth_data.distance_min > max) {
-         max = data.full_depth_data.distance_min;
-    }
-    if (data.full_depth_data.distance_min < min) {
-        min = data.full_depth_data.distance_min;
-    }
-    printf("    margin:%d\n", max-min);
-//    printf("saturation_count:%d\n", data.full_depth_data.saturation_count);
+    printf("distance_min    :%d\n", data.full_depth_data.distance_min);
+    // if (data.full_depth_data.distance_min > max) {
+    //      max = data.full_depth_data.distance_min;
+    // }
+    // if (data.full_depth_data.distance_min < min) {
+    //     min = data.full_depth_data.distance_min;
+    // }
+    // printf("    margin:%d\n", max-min);
+   printf("saturation_count:%d\n", data.full_depth_data.saturation_count);
 
     //    FILE *distance = NULL;
     //    distance = fopen("/mnt/d/TechDev/test.txt", "w+");
@@ -128,7 +128,7 @@ static void disConnectDevice()
     }
 }
 
-static int *capture()
+static int capture(float *return_matrix)
 {
     static HPS3D_StatusTypeDef ret = HPS3D_RET_OK;
     static HPS3D_DeviceSettings_t settings;
@@ -139,6 +139,7 @@ static int *capture()
     if (ret != HPS3D_RET_OK)
     {
         printf("MeasureDataInit failed,Err:%d\n", ret);
+        return HPS3D_RET_ERROR;
     }
 
     //register callback function
@@ -152,6 +153,7 @@ static int *capture()
     if (ret != HPS3D_RET_OK)
     {
         std::cout << "导出设备参数失败,Err:" << ret << "\"" << std::endl;
+        return HPS3D_RET_ERROR;
     }
 
     //    printf("分辨率为:%d X %d\n", settings.max_resolution_X, settings.max_resolution_Y);
@@ -164,10 +166,10 @@ static int *capture()
     //单次测量
 
     ret = HPS3D_SingleCapture(g_handle, &type, &g_measureData);
-    //    printf("*************  HPS3D_FULL_DEPTH_EVEN    ********************\n");
     if (ret != HPS3D_RET_OK)
     {
         printf("SingleCapture failed,Err:%d\n", ret);
+        return HPS3D_RET_ERROR;
     }
     PrintResultData(type, g_measureData);
     //    matrix[0] = g_measureData.full_depth_data.distance;
@@ -179,13 +181,15 @@ static int *capture()
         //        std::cout << "The pointCloud " << i+1 << ": (" << data.full_depth_data.point_cloud_data.point_data[i].x << ", "
         //                  << data.full_depth_data.point_cloud_data.point_data[i].y << ", "
         //                  << data.full_depth_data.point_cloud_data.point_data[i].z << ")" << std::endl;
+        return_matrix[i] = g_measureData.full_depth_data.distance[i];
     }
 
     //    std::cout << matrix[0] << std::endl;
     //    std::cout << sizeof(g_measureData)<< std::endl;
 
     HPS3D_MeasureDataFree(&g_measureData);
-    return matrix;
+    // return_matrix = matrix;
+    return HPS3D_RET_OK;
 }
 
 int main()
@@ -195,6 +199,7 @@ int main()
     char ip_addr[] = "192.168.123.10";
     std::cout << ip_addr << std::endl;
     HPS3D_StatusTypeDef ret = connectDevice(ip_addr, 12345);
+    float *return_matrix = new float[9600];
     if (ret != HPS3D_RET_OK)
     {
         printf("connect failed,Err:%d\n", ret);
@@ -202,7 +207,7 @@ int main()
     }
     while (count++ < times)
     {
-        capture();
+        capture(return_matrix);
     }
 
     //    for (int j=0; j< 9600; ++j)
@@ -218,9 +223,18 @@ extern "C"
     {
         connectDevice(ip_addr, port);
     }
-    void myCapture()
+    int myCapture(float* return_matrix)
     {
-        capture();
+        int rt = capture(return_matrix);
+        if( rt != HPS3D_RET_OK)
+        {
+            // disConnectDevice();
+            
+            std::cout << "error"<< std::endl;
+            return HPS3D_RET_ERROR;
+        }
+        return rt;
+
     }
     void myDisConnectDevice()
     {

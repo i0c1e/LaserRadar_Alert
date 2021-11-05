@@ -40,6 +40,7 @@ class Sensor:
 
         self.__conf = configparser.ConfigParser()
         self.__conf.read(os.path.join(self.__curdir, "config.ini"))
+        self.__open_flag = -1
         so_name = self.__conf.get("radar", "lib_name")
         # so_file = os.path.realpath(so_name)
         # print(os.path.join(self.__curdir, so_name))
@@ -67,8 +68,15 @@ class Sensor:
         logging.info("Device IP: %s" % self.__device_ip)
         rt = True
         if not rt:
-            logging.info("Device connect failed. error code: ")
+            logging.error("Device connect failed. error code: ")
         logging.info("Device connect successfully.")
+        self.__open_flag = 1
+
+    def reconnect_device(self):
+        logging.info("Device capture error, try reconnect device")
+        self.close_model()
+        time.sleep(5)
+        self.connect_device()
 
     def export_csv(self, matrix: np.ndarray, csv_name: str):
         now = datetime.datetime.now()
@@ -91,7 +99,11 @@ class Sensor:
             is_export_conv_matrix = self.__conf.getboolean("radar", "export_conv_matrix")
 
         my_capture = self.__lib.myCapture
-        my_capture.restype = POINTER(c_int * 9600)
+        matrix_pointer = POINTER(c_float * 9600)
+        # lista = (c_float * 9600)(np.zeros(9600).tolist())
+        lista = (c_float * 9600)()
+        my_capture.argtype = matrix_pointer
+        my_capture.restype = c_int
         try:
             num = 0
             stepr = 5
@@ -99,14 +111,30 @@ class Sensor:
             while True:
                 num = num + 1
                 print("Call times: ", num)
-                ret = my_capture()
-                # origin_matrix = np.array(list(ret.contents)).reshape(160, 60)
-                origin_matrix = np.array(list(ret.contents),dtype=np.float32).reshape(60, 160)
 
-                tmp1_origin_matrix = np.r_[origin_matrix/1100,origin_matrix/1200,origin_matrix/1300]
-                tmp2_origin_matrix = np.r_[origin_matrix/1400,origin_matrix/1500,origin_matrix/1600]
-                tmp3_origin_matrix = np.r_[origin_matrix/1700,origin_matrix/1800,origin_matrix/1900]
-                origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix,tmp3_origin_matrix]
+                rt_code = my_capture(lista)
+                if(rt_code!=1):
+                    self.reconnect_device()
+                    continue
+                return_matrix = lista
+                # print(list(lista))
+                # print(lista.contents)
+                compute_matrix = [point for point in lista if point < 10000]
+                logging.info("compute distance average: %.2f" % np.average(compute_matrix))
+                logging.info("compute distance min: %.2f" % np.min(compute_matrix))
+
+                # return_matrix = my_capture()
+                # print("return_matrix type: %s, length: %s"%(type(return_matrix.contents), len(return_matrix.contents)))
+                # if return_matrix._b_base_ is None:
+                #     print("Return message is None, try reconnect.")
+                # origin_matrix = np.array(list(return_matrix.contents)).reshape(160, 60)
+                origin_matrix = np.array(list(return_matrix),dtype=np.float32).reshape(60, 160)
+
+                tmp1_origin_matrix = np.r_[origin_matrix/400,origin_matrix/800]
+                tmp2_origin_matrix = np.r_[origin_matrix/1000,origin_matrix/1500]
+                #tmp3_origin_matrix = np.r_[origin_matrix/2500,origin_matrix/3000,origin_matrix/3500]
+                #origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix,tmp3_origin_matrix]
+                origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix]
                 # origin_matrix = origin_matrix/2500
 
                 # sigmoid
@@ -117,8 +145,8 @@ class Sensor:
                 new_img = cv2.normalize(origin_matrix, origin_matrix, 0, 255, cv2.NORM_MINMAX)
                 new_img = cv2.convertScaleAbs(new_img)
                 # gray = cv2.cvtColor(new_img,cv2.COLOR_BGR2GRAY)
-                cv2.namedWindow('cam', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
-                cv2.imshow("cam", new_img)
+                cv2.namedWindow('radar', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+                cv2.imshow("radar", new_img)
                 cv2.waitKey(1)
                 if cv2.waitKey(1) and 0xFF == ord('q'):
                     break
@@ -146,20 +174,21 @@ class Sensor:
                 # threshold_matrix = self.read_threshold_data()
                 threshold_matrix = np.ones(60//stepr * 160//stepc).reshape(60//stepr,160//stepc)
 
-                logging.debug("Conv_Matrix: %s\n%s" % (conv_matrix.shape,conv_matrix))
+                # logging.debug("Conv_Matrix: %s" % (conv_matrix.shape))
+                # logging.debug("Conv_Matrix: %s\n%s" % (conv_matrix.shape,conv_matrix))
                 bool_matrix = conv_matrix-threshold_matrix > 0
                 # self.print_matrix(bool_matrix)
                 
                 # logging.debug("Judge_Matrix:\n%s" % (conv_matrix-threshold_matrix < 0))
                 alert_matrix = conv_matrix[conv_matrix-threshold_matrix < 0]
-                logging.info("Alert_Point:%d" % alert_matrix.size)
+                # logging.info("Alert_Point:%d" % alert_matrix.size)
                 # logging.info("Alert_Matrix:\n%s" % alert_matrix)
 
                 if is_export_origin_matrix is True:
                     self.export_csv(origin_matrix / 1000, "OriginMatrix")
                 if is_export_conv_matrix is True:
                     self.export_csv(conv_matrix, "ConvMatrix")
-                # time.sleep(capture_time)
+                time.sleep(capture_time)
                 # time.sleep(1)
         except KeyboardInterrupt:
             print("\nKeyboardInterrupt Program closing...")
@@ -169,9 +198,9 @@ class Sensor:
         except Exception as ex:
             logging.error("Error! Detail message: %s" % ex)
             # self.lib.myDisConnectDevice()
-        # finally:
+        finally:
         #     # disconnect device
-        #     self.__lib.myDisConnectDevice()
+            self.close_model()
 
     def print_matrix(self, matrix):
         # # 从左到右打印
@@ -221,20 +250,23 @@ class Sensor:
             logging.info("Device disconnect error")
         logging.info("Device disconnected")
         self.__args.close_db()
+        self.__open_flag = 0
+
 
 
 if __name__ == '__main__':
 
     # 日志服务
     # Release
-    # logging.basicConfig(level=logging.DEBUG, filename="radar.log", filemode="a",
-    #                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+    # logging.basicConfig(level=logging.DEBUG, 
+    #                      format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+    logging.basicConfig(level=logging.DEBUG, filename="radar.log", filemode="a",
+                         format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
     # logging.basicConfig(level=logging.ERROR, filename="error.log", filemode="a",
     #                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
     # Debug
-    logging.basicConfig(level=logging.DEBUG, filemode="a",
-                        format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+    #logging.basicConfig(level=logging.DEBUG, filemode="a",format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
 
     # 1. 读取配置信息
@@ -253,4 +285,5 @@ if __name__ == '__main__':
         sensor.call_robot()
 
     # 6.关闭模型
-    sensor.close_model()
+    if(sensor.__open_flag != 0):
+        sensor.close_model()   
