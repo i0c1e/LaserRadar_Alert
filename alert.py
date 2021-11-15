@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 from ctypes import *
 import numpy as np
+import argparse
 import cv2
 from datetime import datetime
 import time, datetime
@@ -62,6 +63,9 @@ class Sensor:
         self.__threshold_data = self.__args.get_threshold()
         self.__target_shape = tuple(
             [self.__conf.getint("radar", "target_row"), self.__conf.getint("radar", "target_column")])
+    
+    def set_ip(self, ip):
+        self.__device_ip = ip
 
     def connect_device(self):
         rt = self.__lib.myConnectDevice(c_char_p(bytes(self.__device_ip,encoding="utf-8")),c_int(self.__port))
@@ -146,6 +150,8 @@ class Sensor:
                 new_img = cv2.convertScaleAbs(new_img)
                 # gray = cv2.cvtColor(new_img,cv2.COLOR_BGR2GRAY)
                 cv2.namedWindow('radar', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+                # 画框
+                # cv2.rectangle(new_img,(44,25),(128,30),(0, 0, 255), 1)
                 cv2.imshow("radar", new_img)
                 cv2.waitKey(1)
                 if cv2.waitKey(1) and 0xFF == ord('q'):
@@ -268,10 +274,17 @@ if __name__ == '__main__':
     # Debug
     #logging.basicConfig(level=logging.DEBUG, filemode="a",format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
+    parser = argparse.ArgumentParser(description="Radar Arg Parser")
+    parser.add_argument('--ip',type=str, help='radar ip addr')
+    args = parser.parse_args()
+
 
     # 1. 读取配置信息
     # model_args = ModelArgs()
     sensor = Sensor()
+
+    if args.ip :
+        sensor.set_ip(args.ip)
     # 2. 定时调用so库获取实时数据
     sensor.connect_device()
     sensor.single_capture()
