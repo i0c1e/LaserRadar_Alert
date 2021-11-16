@@ -93,6 +93,35 @@ class Sensor:
     def sigmoid(x):
         return 1 / (1 + np.exp(-x))
 
+    def roi_compute(self,img, matrix):
+        regions = self.__conf["roi"]["positions"]
+        regions = json.loads(regions)
+        for region in regions:
+            x = int(regions[region]["x"])
+            y = int(regions[region]["y"])
+            longth = int(regions[region]["longth"])
+            height = int(regions[region]["height"])
+            # 计算均值
+            region_matrix = matrix[y:y+height,x:x+longth]
+            region_matrix = [value for value in region_matrix.flatten() if value < 10000]
+            average = int(np.sum(region_matrix) // len(region_matrix))
+            logging.info("compute region %s average distance: %.2f" % (regions[region]["name"], average))
+            if average < regions[region]["distance"]:
+                logging.info("#################    BLOCK DETECTED!    #################")
+                logging.info("Area: [ %s ] blocked, Position: %s, Average distance: %s." %(regions[region]["name"], (x,y),average))
+                logging.info("Call Robot......")
+                self.call_robot(regions[region]["name"], (x,y), time.time)
+            # distance = 1
+            # 画框
+            img = cv2.rectangle(img,(x,y),(x+longth,y+height),(0, 0, 255), 1)
+            img = cv2.putText(img, regions[region]["name"] + str(regions[region]["distance"]) + ":" + str(average) , 
+            (x+40,y+10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1, lineType=cv2.LINE_AA)
+            # img = cv2.putText(img, regions[region]["name"] + str(regions[region]["distance"]) + ":" + str(average) , 
+            # (0,60), cv2.FONT_HERSHEY_SIMPLEX, 0.4, ( 255,0, 0), 1, lineType=cv2.LINE_AA)
+            
+
+        return img
+
     def single_capture(self, capture_time: int = 3):
         if self.__conf.has_option("radar", "capture_time"):
             capture_time = self.__conf.getint("radar", "capture_time")
@@ -133,13 +162,14 @@ class Sensor:
                 #     print("Return message is None, try reconnect.")
                 # origin_matrix = np.array(list(return_matrix.contents)).reshape(160, 60)
                 origin_matrix = np.array(list(return_matrix),dtype=np.float32).reshape(60, 160)
+                compute_matrix = origin_matrix
 
                 tmp1_origin_matrix = np.r_[origin_matrix/400,origin_matrix/800]
                 tmp2_origin_matrix = np.r_[origin_matrix/1000,origin_matrix/1500]
                 #tmp3_origin_matrix = np.r_[origin_matrix/2500,origin_matrix/3000,origin_matrix/3500]
                 #origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix,tmp3_origin_matrix]
-                origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix]
-                # origin_matrix = origin_matrix/2500
+                # origin_matrix = np.c_[tmp1_origin_matrix,tmp2_origin_matrix]
+                origin_matrix = origin_matrix/1000
 
                 # sigmoid
                 origin_matrix = 1/(1+np.exp(-origin_matrix))
@@ -151,7 +181,17 @@ class Sensor:
                 # gray = cv2.cvtColor(new_img,cv2.COLOR_BGR2GRAY)
                 cv2.namedWindow('radar', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
                 # 画框
-                # cv2.rectangle(new_img,(44,25),(128,30),(0, 0, 255), 1)
+                if np.max(origin_matrix) != 0.0 and self.__conf.has_option("roi", "enable_roi"):
+                    if self.__conf.getboolean("roi", "enable_roi"):
+                        self.roi_compute(new_img, compute_matrix)
+
+                # if enable_roi:
+                #     self.__conf.get()
+                # if self.__conf.has_option("roi", "export_conv_matrix"):
+                #     is_export_conv_matrix = self.__conf.getboolean("radar", "export_conv_matrix")
+                # cv2.rectangle(new_img,(55,40),(93,47),(0, 0, 255), 1)
+                # new_img = cv2.putText(new_img, "PA", (60,40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, lineType=cv2.LINE_AA)
+
                 cv2.imshow("radar", new_img)
                 cv2.waitKey(1)
                 if cv2.waitKey(1) and 0xFF == ord('q'):
@@ -246,8 +286,10 @@ class Sensor:
         return False
 
     # 调用机器人清堵
-    def call_robot(self):
-        pass
+    def call_robot(self,region_name, position, calltime):
+        logging.info("Clean Task Start......")
+        time.sleep(30)
+        logging.info("Clean Task Done, Programme Continue......")
 
     def close_model(self):
         rt = self.__lib.myDisConnectDevice()
@@ -272,7 +314,7 @@ if __name__ == '__main__':
     #                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
     # Debug
-    #logging.basicConfig(level=logging.DEBUG, filemode="a",format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
+    # logging.basicConfig(level=logging.DEBUG, filemode="a",format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
     parser = argparse.ArgumentParser(description="Radar Arg Parser")
     parser.add_argument('--ip',type=str, help='radar ip addr')
@@ -290,13 +332,13 @@ if __name__ == '__main__':
     sensor.single_capture()
 
     # 3. 卷积生成堵塞状态矩阵
-    sensor.conv()
+    # sensor.conv()
     # 4. 判断是否堵料
-    flag = sensor.is_block()
+    # flag = sensor.is_block()
     # 5. 调用机器人清堵
-    if (not flag):
-        sensor.call_robot()
+    # if (not flag):
+    #     sensor.call_robot()
 
     # 6.关闭模型
-    if(sensor.__open_flag != 0):
+    if(sensor._Sensor__open_flag != 0):
         sensor.close_model()   
