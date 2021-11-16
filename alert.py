@@ -42,6 +42,7 @@ class Sensor:
         self.__conf = configparser.ConfigParser()
         self.__conf.read(os.path.join(self.__curdir, "config.ini"))
         self.__open_flag = -1
+        self.__visible = True
         so_name = self.__conf.get("radar", "lib_name")
         # so_file = os.path.realpath(so_name)
         # print(os.path.join(self.__curdir, so_name))
@@ -81,6 +82,13 @@ class Sensor:
         self.close_model()
         time.sleep(5)
         self.connect_device()
+
+    def set_visible(self, is_visible):
+        self.__visible = is_visible
+    
+    def get_visible(self) -> bool:
+        return self.__visible
+
 
     def export_csv(self, matrix: np.ndarray, csv_name: str):
         now = datetime.datetime.now()
@@ -179,7 +187,9 @@ class Sensor:
                 new_img = cv2.normalize(origin_matrix, origin_matrix, 0, 255, cv2.NORM_MINMAX)
                 new_img = cv2.convertScaleAbs(new_img)
                 # gray = cv2.cvtColor(new_img,cv2.COLOR_BGR2GRAY)
-                cv2.namedWindow('radar', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+
+                if self.get_visible() == True:
+                    cv2.namedWindow('radar', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
                 # 画框
                 if np.max(origin_matrix) != 0.0 and self.__conf.has_option("roi", "enable_roi"):
                     if self.__conf.getboolean("roi", "enable_roi"):
@@ -192,10 +202,11 @@ class Sensor:
                 # cv2.rectangle(new_img,(55,40),(93,47),(0, 0, 255), 1)
                 # new_img = cv2.putText(new_img, "PA", (60,40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, lineType=cv2.LINE_AA)
 
-                cv2.imshow("radar", new_img)
-                cv2.waitKey(1)
-                if cv2.waitKey(1) and 0xFF == ord('q'):
-                    break
+                if self.get_visible():
+                    cv2.imshow("radar", new_img)
+                    cv2.waitKey(1)
+                    if cv2.waitKey(1) and 0xFF == ord('q'):
+                        break
                 # plt.imshow(new_img, cmap='gray')
                 # plt.show()
                 n = 0
@@ -318,6 +329,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Radar Arg Parser")
     parser.add_argument('--ip',type=str, help='radar ip addr')
+    parser.add_argument('--command',action='store_true', help='show GUI image')
     args = parser.parse_args()
 
 
@@ -327,6 +339,10 @@ if __name__ == '__main__':
 
     if args.ip :
         sensor.set_ip(args.ip)
+    # print(args.command)
+    # args.command = True
+    if args.command:
+        sensor.set_visible(False)
     # 2. 定时调用so库获取实时数据
     sensor.connect_device()
     sensor.single_capture()

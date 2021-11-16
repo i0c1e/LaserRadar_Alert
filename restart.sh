@@ -17,7 +17,7 @@ number=$?
 
 if [ $number -eq 0 ]
 then 
-    /opt/software/anaconda3/envs/dl/bin/python  /home/charles/code/LaserRadar_Alert/alert.py >> /home/charles/code/LaserRadar_Alert/radar.log 
+    nohup /opt/software/anaconda3/envs/dl/bin/python  /home/charles/code/LaserRadar_Alert/alert.py >> /home/charles/code/LaserRadar_Alert/radar.log &
     proc_id
     echo ${pid}, `date` >> $file_name
 fi
