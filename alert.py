@@ -7,10 +7,10 @@ from datetime import datetime
 import time, datetime
 import json
 import logging
-import sqlite3
 import configparser
-import matplotlib.pyplot as plt
-import os
+import os,sys
+import _thread
+import threading
 
 
 class ModelArgs:
@@ -43,6 +43,7 @@ class Sensor:
         self.__conf.read(os.path.join(self.__curdir, "config.ini"))
         self.__open_flag = -1
         self.__visible = True
+        self.__retry_count = 5
         so_name = self.__conf.get("radar", "lib_name")
         # so_file = os.path.realpath(so_name)
         # print(os.path.join(self.__curdir, so_name))
@@ -71,7 +72,6 @@ class Sensor:
     def connect_device(self):
         rt = self.__lib.myConnectDevice(c_char_p(bytes(self.__device_ip,encoding="utf-8")),c_int(self.__port))
         logging.info("Device IP: %s" % self.__device_ip)
-        rt = True
         if not rt:
             logging.error("Device connect failed. error code: ")
         logging.info("Device connect successfully.")
@@ -112,9 +112,12 @@ class Sensor:
             # 计算均值
             region_matrix = matrix[y:y+height,x:x+longth]
             region_matrix = [value for value in region_matrix.flatten() if value < 10000]
+            
             average = int(np.sum(region_matrix) // len(region_matrix))
+            
+
             logging.info("compute region %s average distance: %.2f" % (regions[region]["name"], average))
-            if average < regions[region]["distance"]:
+            if average > 100 and average < regions[region]["distance"]:
                 logging.info("#################    BLOCK DETECTED!    #################")
                 logging.info("Area: [ %s ] blocked, Position: %s, Average distance: %s." %(regions[region]["name"], (x,y),average))
                 logging.info("Call Robot......")
@@ -122,18 +125,28 @@ class Sensor:
             # distance = 1
             # 画框
             img = cv2.rectangle(img,(x,y),(x+longth,y+height),(0, 0, 255), 1)
-            img = cv2.putText(img, regions[region]["name"] + str(regions[region]["distance"]) + ":" + str(average) , 
+            img = cv2.putText(img, regions[region]["name"] + ":"  + str(regions[region]["distance"]) + ":" + str(average) , 
             (x+40,y+10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1, lineType=cv2.LINE_AA)
-            # img = cv2.putText(img, regions[region]["name"] + str(regions[region]["distance"]) + ":" + str(average) , 
+            # img = cv2.putText(img, regions[region]["name"] + str(regions[region]["distance"]) + ":" + str(1) , 
             # (0,60), cv2.FONT_HERSHEY_SIMPLEX, 0.4, ( 255,0, 0), 1, lineType=cv2.LINE_AA)
-            
-
         return img
+
+    def init_logger(self) -> bool:
+        if self.__conf.has_option("log", "logfile"):
+            logfile = self.__conf.get("log", "logfile")
+        else:
+            logfile = "logs/basic-log.txt"
+
+        logfile_pointer = c_char_p(bytes(logfile,encoding="utf-8"))
+
+        return self.__lib.my_init_logger(logfile_pointer)
+
 
     def single_capture(self, capture_time: int = 3):
         if self.__conf.has_option("radar", "capture_time"):
             capture_time = self.__conf.getint("radar", "capture_time")
         logging.info("Single Capture Time: %d s", capture_time)
+
         if self.__conf.has_option("radar", "export_origin_matrix"):
             is_export_origin_matrix = self.__conf.getboolean("radar", "export_origin_matrix")
         if self.__conf.has_option("radar", "export_conv_matrix"):
@@ -180,7 +193,8 @@ class Sensor:
                 origin_matrix = origin_matrix/1000
 
                 # sigmoid
-                origin_matrix = 1/(1+np.exp(-origin_matrix))
+                # origin_matrix = 1/(1+np.exp(-origin_matrix))
+                origin_matrix = self.sigmoid(origin_matrix)
                 # tanh
 #                origin_matrix = (np.exp(origin_matrix)-np.exp(-origin_matrix))/(np.exp(origin_matrix)+np.exp(-origin_matrix))
                 # plt.imshow(origin_matrix * 0.0038, cmap='gray_r')
@@ -258,6 +272,27 @@ class Sensor:
         finally:
         #     # disconnect device
             self.close_model()
+    
+    def continue_capture(self, threadname):
+        my_continue_capture = self.__lib.my_continue_capture
+        # rt = continue_capture()
+        count = 0
+        while count < 5:
+            
+            rt = my_continue_capture()
+            # print("capture rt: ",rt)
+            # print("-----------       %s reconnect. retry count:%d          ---------------" % (time.strftime('%y-%m-%d %H:%M:%S',time.localtime()),count))
+            logging.error("==========   reconnect. retry count:%d   ==========" % (count + 1))
+            if (rt == 0):
+                count += 1
+                time.sleep(1)
+                self.reconnect_device()
+            count = 0
+        # 结束程序
+        print("==========   try capture exit...   ==========")
+        logging.error("Try Capture Error, Exit...")
+        os._exit(1)
+        # sys.exit()
 
     def print_matrix(self, matrix):
         # # 从左到右打印
@@ -275,8 +310,76 @@ class Sensor:
         # print("\033[1;41m%s\033[0m" % (conv_matrix-threshold_matrix < 0))
     
     # 获取传感器数据信息
-    def get_sensor_data(self):
-        return self.__sensor_data
+    def get_sensor_data(self, threadname):
+        my_get_data = self.__lib.my_get_data
+
+        time.sleep(1)
+        lista = (c_float*9600)()
+
+        tmp_average = -1
+        tmp_min = -1
+        retry_count = 0
+
+        while(retry_count < 5):
+            try:
+                rt = my_get_data(lista)
+                # print(lista[0:9600])
+                if rt != 1:
+                    logging.warn("capture data size error : %d" % rt)
+                    retry_count += 1
+                    logging.warn("Wait 3s... Retry times: %d" % retry_count)
+                    time.sleep(5)
+                    continue
+
+                compute_matrix = [point for point in lista if point < 10000]
+                logging.info("compute distance average: %.2f" % np.average(compute_matrix))
+                logging.info("compute distance min: %.2f" % np.min(compute_matrix))
+
+                if(np.average(compute_matrix) == tmp_average and np.min(compute_matrix) == tmp_min):
+                    logging.warn("******** Data Not Update ********")
+                    retry_count += 1
+                    logging.warn("Wait 3s... Retry times: %d" % retry_count)
+                    time.sleep(5)
+                    continue
+
+                tmp_average,tmp_min = np.average(compute_matrix),np.min(compute_matrix)
+                retry_count = 0
+
+                origin_matrix = np.array(lista,dtype=np.float32).reshape(60, 160)
+
+                img_matrix = origin_matrix/1000
+
+                # sigmoid
+                img_matrix = 1/(1+np.exp(-img_matrix))
+
+                new_img = cv2.normalize(img_matrix, img_matrix, 0, 255, cv2.NORM_MINMAX)
+                new_img = cv2.convertScaleAbs(new_img)
+
+                if self.get_visible() == True:
+                    cv2.namedWindow('radar', cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+
+                #画框
+                if np.max(img_matrix) != 0.0 and self.__conf.has_option("roi", "enable_roi"):
+                    if self.__conf.getboolean("roi", "enable_roi"):
+                        new_img = self.roi_compute(new_img, origin_matrix)
+
+                # cv2.rectangle(new_img,(55,40),(93,47),(0, 0, 255), 1)
+                # new_img = cv2.putText(new_img, "PA", (60,40), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, lineType=cv2.LINE_AA)
+
+                if self.get_visible():
+                    cv2.imshow("radar", new_img)
+                    cv2.waitKey(1)
+                    if cv2.waitKey(1) and 0xFF == ord('q'):
+                        # break
+                        return
+                time.sleep(1)
+            except Exception as ex:
+                logging.error("Compute Exception: %s" % ex)
+                retry_count += 1
+                time.sleep(3)
+                continue
+        logging.error("Stop get sensor data. Thread exit...")
+        os._exit(1)
 
     # 图像卷积
     def conv(kernel_size: int):
@@ -303,8 +406,8 @@ class Sensor:
         logging.info("Clean Task Done, Programme Continue......")
 
     def close_model(self):
-        rt = self.__lib.myDisConnectDevice()
         rt = True
+        rt = self.__lib.myDisConnectDevice()
         if not rt:
             logging.info("Device disconnect error")
         logging.info("Device disconnected")
@@ -314,6 +417,7 @@ class Sensor:
 
 
 if __name__ == '__main__':
+
 
     # 日志服务
     # Release
@@ -327,6 +431,8 @@ if __name__ == '__main__':
     # Debug
     # logging.basicConfig(level=logging.DEBUG, filemode="a",format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
+    logging.info("=================   Program Start   =================")
+
     parser = argparse.ArgumentParser(description="Radar Arg Parser")
     parser.add_argument('--ip',type=str, help='radar ip addr')
     parser.add_argument('--command',action='store_true', help='show GUI image')
@@ -339,22 +445,38 @@ if __name__ == '__main__':
 
     if args.ip :
         sensor.set_ip(args.ip)
-    # print(args.command)
-    # args.command = True
+
     if args.command:
         sensor.set_visible(False)
-    # 2. 定时调用so库获取实时数据
-    sensor.connect_device()
-    sensor.single_capture()
+    
+    # 2. 初始化logger
+    sensor.init_logger()
 
-    # 3. 卷积生成堵塞状态矩阵
-    # sensor.conv()
-    # 4. 判断是否堵料
-    # flag = sensor.is_block()
-    # 5. 调用机器人清堵
+    # 3. 定时调用so库获取实时数据
+    sensor.connect_device()
+    # sensor.single_capture()
+    # sensor.continue_capture()
+
+    # 启动多线程
+    try:
+        _thread.start_new_thread( sensor.continue_capture, ("Thread-1", ) )
+        _thread.start_new_thread( sensor.get_sensor_data, ("Thread-2", ) )
+        while 1:
+            # time.sleep(5)
+            # break
+            pass
+    except KeyboardInterrupt:
+        print("\nKeyboardInterrupt Program closing...")
+        logging.info("KeyboardInterrupt Program closing...")
+    except Exception as ex:
+        logging.error("Error! 无法启动线程")
+        logging.error("Error! Detail message: %s" % ex)
+    finally:
+        # 6.关闭模型
+        sensor.close_model()
+        logging.info("=================   Program exit   =================")
+    
+    # 4. 调用机器人清堵
     # if (not flag):
     #     sensor.call_robot()
 
-    # 6.关闭模型
-    if(sensor._Sensor__open_flag != 0):
-        sensor.close_model()   
