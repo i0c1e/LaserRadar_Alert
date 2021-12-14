@@ -9,6 +9,7 @@ import json
 import logging
 import configparser
 import os,sys
+import socket
 import _thread
 import threading
 
@@ -402,6 +403,15 @@ class Sensor:
     # 调用机器人清堵
     def call_robot(self,region_name, position, calltime):
         logging.info("Clean Task Start......")
+
+        HOST = '127.0.0.1'    # The remote host
+        PORT = 7788              # The same port as used by the server
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((HOST, PORT))
+            s.sendall(b'Hello, world')
+            data = s.recv(1024)
+        # print('Received', repr(data))
+
         time.sleep(30)
         logging.info("Clean Task Done, Programme Continue......")
 
