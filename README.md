@@ -3,12 +3,14 @@
 
 ### 部署
 ###### spdlog静态库编译
+```Shell
 git clone https://github.com/gabime/spdlog.git
 cd spdlog && mkdir build && cd build
 cmake .. && make -j4
 cp libspdlog ../../LaserRadar_Alert
+```
 
-手动编译动态链接库
+###### 手动编译动态链接库
 ```Shell
 g++ -c HPS3DUser_IF.c
 
