@@ -1,5 +1,5 @@
 ### 依赖
-spdlog
+- spdlog
 
 ### 部署
 ###### spdlog静态库编译
