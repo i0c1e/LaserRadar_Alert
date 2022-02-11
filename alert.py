@@ -403,16 +403,19 @@ class Sensor:
     # 调用机器人清堵
     def call_robot(self,region_name, position, calltime):
         logging.info("Clean Task Start......")
+        ROBOT_IP = self.__conf.get("radar", "robot_ip")
+        ROBOT_PORT = self.__conf.getint("radar", "robot_port")
+        EXECUTE_TIME = self.__conf.getint("radar", "execute_time")
+        # HOST = '10.106.40.231'    # The remote host
+        # PORT = 2000              # The same port as used by the server
 
-        HOST = '127.0.0.1'    # The remote host
-        PORT = 7788              # The same port as used by the server
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((HOST, PORT))
-            s.sendall(b'Hello, world')
-            data = s.recv(1024)
+            s.connect((ROBOT_IP, ROBOT_PORT))
+            s.sendall(b'Conch')
+            # data = s.recv(1024)
         # print('Received', repr(data))
-
-        time.sleep(30)
+        logging.info("Clean Task Start, ROBOT: %s, wait %d s..." % ((ROBOT_IP + ":" + str(ROBOT_PORT)),EXECUTE_TIME))
+        time.sleep(EXECUTE_TIME)
         logging.info("Clean Task Done, Programme Continue......")
 
     def close_model(self):
